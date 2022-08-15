@@ -10,6 +10,7 @@
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx"
   },
   "dependencies": {
+    "bootstrap": "^5.2.0",
     "react": "18.0.0",
     "react-native": "0.69.4"
   },
@@ -40,5 +41,10 @@
       "json",
       "node"
     ]
-  }
+  },
+  "description": "circleci default example",
+  "main": "index.js",
+  "repository": "git@github.com:edmilson-expedito/react-app-circleci.git",
+  "author": "Edmilson Expedito <edmilson.expedito@objective.com.br>",
+  "license": "MIT"
 }
