@@ -1,6 +1,6 @@
 {
   "name": "react_circleci",
-  "version": "v0.0.1",
+  "version": "0.0.2",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -46,5 +46,8 @@
   "main": "index.js",
   "repository": "git@github.com:edmilson-expedito/react-app-circleci.git",
   "author": "Edmilson Expedito <edmilson.expedito@objective.com.br>",
-  "license": "MIT"
+  "license": "MIT",
+  "optionalDependencies": {
+    "fsevents": "^2.3.2"
+  }
 }
