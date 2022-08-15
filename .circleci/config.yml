@@ -54,7 +54,7 @@ jobs:
       - run: git checkout -- .
       - run:
           name: Starting environment
-          command: yarn bootstrap
+          command: npm install
       - save_cache:
           key: dependencies-{{ checksum "package_cache.json" }}
           paths:
@@ -90,7 +90,7 @@ jobs:
       # - restore-source-checksum-cache
       - run:
           name: Bump version
-          command: yarn version:app --set-build ${CIRCLE_BUILD_NUM}
+          command: yarn version --new-version ${CIRCLE_BUILD_NUM}
       - save_cache:
           key: app-bump-version-{{ .Branch }}-{{ .Revision }}
           paths:
