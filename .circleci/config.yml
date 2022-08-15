@@ -195,6 +195,7 @@ commit-workflow-filters: &commit-workflow-filters
   branches:
     only:
       - develop
+      - new_node
       - /feature\/.*/
       - /bugfix(-(sta|dev|mas))?\/.*/
       - /hotfix(-(sta|dev|mas))?\/.*/
@@ -203,6 +204,7 @@ deploy-dev-workflow-filters: &deploy-dev-workflow-filters
   branches:
     only:
       - develop
+      - new_node
 
 workflows:
   version: 2
