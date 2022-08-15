@@ -41,6 +41,34 @@ executors:
     environment:
       NODE_OPTIONS: --max_old_space_size=4096
 
+references:
+  restore_dependencies_cache: &restore_dependencies_cache
+    restore_cache:
+      keys:
+        - dependencies-{{ checksum "package_cache.json" }}
+
+  restore_source_cache: &restore_source_cache
+    restore_cache:
+      keys:
+        - source-{{ .Branch }}-{{ .Revision }}
+
+  generate_dependencies_cache_checksum: &generate_dependencies_cache_checksum
+    run:
+      name: Dependencies cache checksum
+      shell: /bin/bash -eu
+      command: |
+        cat package.json > package_cache.json
+        cat yarn.lock >> package_cache.json
+
+commands:
+  restore-source-checksum-cache:
+    description: "This command will restore the source code from cache"
+    steps:
+      - *restore_source_cache
+      - run: git checkout -- .
+      - *generate_dependencies_cache_checksum
+      - *restore_dependencies_cache
+
 jobs:
   bootstrap:
     executor: node-minor
@@ -52,9 +80,11 @@ jobs:
           paths:
             - '.git'
       - run: git checkout -- .
+      - *generate_dependencies_cache_checksum
+      - *restore_dependencies_cache
       - run:
           name: Starting environment
-          command: npm install
+          command: npm ci
       - save_cache:
           key: dependencies-{{ checksum "package_cache.json" }}
           paths:
@@ -63,7 +93,7 @@ jobs:
   code-lint:
     executor: node-minor
     steps:
-      # - restore-source-checksum-cache
+      - restore-source-checksum-cache
       - run:
           name: Build web
           command: yarn lint
@@ -72,11 +102,11 @@ jobs:
     executor: node
     description: "This command will run the unit tests"
     steps:
-      # - restore-source-checksum-cache
+      - restore-source-checksum-cache
       - run:
           name: Run tests
           command: |
-            yarn test:ci
+            yarn test
       - save_cache:
           key: unit-test-{{ .Branch }}-{{ .Revision }}
           paths:
@@ -87,10 +117,11 @@ jobs:
   app-bump-version:
     executor: quick-tasks
     steps:
-      # - restore-source-checksum-cache
+      - restore-source-checksum-cache
       - run:
           name: Bump version
-          command: yarn version --new-version ${CIRCLE_BUILD_NUM}
+          command: echo ${CIRCLE_BUILD_NUM}
+            yarn version:app --set-build ${CIRCLE_BUILD_NUM}
       - save_cache:
           key: app-bump-version-{{ .Branch }}-{{ .Revision }}
           paths:
@@ -102,10 +133,10 @@ jobs:
   android-build:
     executor: android
     steps:
-      # - restore-source-checksum-cache
-      - restore_cache:
-          keys:
-            - env-{{ .Branch }}-{{ .Revision }}
+      - restore-source-checksum-cache
+      # - restore_cache:
+      #     keys:
+      #       - env-{{ .Branch }}-{{ .Revision }}
       - restore_cache:
           keys:
             - app-bump-version-{{ .Branch }}-{{ .Revision }}
@@ -189,8 +220,8 @@ workflows:
             - bootstrap
           filters: *commit-workflow-filters
       - app-bump-version:
-          # requires:
-          #   - setup-env-dev
+          requires:
+            - unit-test-circleci
           filters: *deploy-dev-workflow-filters
       - android-build:
           requires:
