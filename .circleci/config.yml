@@ -111,8 +111,6 @@ jobs:
           key: unit-test-{{ .Branch }}-{{ .Revision }}
           paths:
             - jest/coverage
-
-      # - coverage-report
   
   app-bump-version:
     executor: quick-tasks
@@ -134,9 +132,6 @@ jobs:
     executor: android
     steps:
       - restore-source-checksum-cache
-      # - restore_cache:
-      #     keys:
-      #       - env-{{ .Branch }}-{{ .Revision }}
       - restore_cache:
           keys:
             - app-bump-version-{{ .Branch }}-{{ .Revision }}
@@ -159,13 +154,6 @@ jobs:
             cd android
             npx react-native bundle --platform android --dev false --entry-file index.js \
             --bundle-output index.android.bundle
-      # - run:
-      #     name: Build AAB
-      #     command: |
-      #       export LC_ALL=en_US.UTF-8
-      #       export LANG=en_US.UTF-8
-      #       cd android
-      #       bundle exec fastlane build
       - run:
           name: Build APK Release
           command: |
@@ -227,80 +215,3 @@ workflows:
           requires:
             - app-bump-version
           filters: *deploy-dev-workflow-filters
-      
-
-
-
-
-#   checkout:
-#     docker:
-#       - image: cimg/node:16.16.0
-#     steps:
-#       - checkout
-#       - restore_cache:
-#           key: dependency-cache-{{ checksum "package-lock.json" }}
-#       - run:
-#           name: Install Dependencies
-#           command: npm install
-#       - save_cache:
-#           key: dependency-cache-{{ checksum "package-lock.json" }}
-#           paths:
-#             - ./node_modules
-#       - run:
-#           name: Run lint verify
-#           command: npm run lint
-#       - run:
-#           name: Run unit tests
-#           command: yarn test
-#       - save_cache:
-#           key: unit-test-{{ .Branch }}-{{ .Revision }}
-#           paths:
-#             - jest/coverage
-#       - run:
-#           name: Dependencies (Fastlane)
-#           command: |
-#             cd android
-#             sudo apt install ruby-bundler -y
-#             bundle config set path 'vendor/bundle'
-#             bundle install
-#       - run:
-#           name: Geração do arquivo bundle
-#           command: |
-#             cd android
-#             npx react-native bundle --platform android --dev false --entry-file index.js \
-#             --bundle-output app/src/main/assets/index.android.bundle
-#       - run:
-#           name: Build React App
-#           command: npm run build
-#       - save_cache:
-#           key: app-build-cache-{{ .Branch }}
-#           paths:
-#             - ./build
-#   tests:
-#     docker:
-#       - image: cimg/node:16.16.0
-#     steps:
-#       # - lint
-#       - run:
-#           name: Run lint verify
-#           command: npm run lint
-#       # - test
-#       - run:
-#           name: Run unit tests
-#           command: yarn test
-#   build:
-#     docker:
-#       - image: cimg/node:16.16.0
-#     steps:
-#       # - build
-#       - run:
-#           name: Build React App
-#           command: npm run build
-#       - save_cache:
-#           key: app-build-cache-{{ .Branch }}
-#           paths:
-#             - ./build
-# workflows:
-#   build_test:
-#     jobs:
-#       - checkout
