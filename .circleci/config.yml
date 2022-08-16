@@ -1,0 +1,217 @@
+version: 2.1
+
+orbs:
+  aws-ecr: circleci/aws-ecr@8.1.2
+  aws-cli: circleci/aws-cli@3.1.1
+
+executors:
+  java:
+    docker:
+      - image: cimg/openjdk:11.0.0-node
+    resource_class: large
+    working_directory: ~/workspace
+  node:
+    docker:
+      - image: cimg/node:14.19.1
+    environment:
+      NODE_OPTIONS: --max_old_space_size=8192
+    resource_class: xlarge
+    working_directory: ~/workspace
+  node-minor:
+    docker:
+      - image: cimg/node:14.19.1
+    resource_class: small
+    working_directory: ~/workspace
+  quick-tasks:
+    docker:
+      - image: cimg/python:3.10.4-node
+    working_directory: ~/workspace
+    resource_class: small
+  android:
+    docker:
+      - image: cimg/android:2022.04.1-node
+    working_directory: /home/circleci/workspace
+    resource_class: large
+    environment:
+      NODE_OPTIONS: --max_old_space_size=16384
+  security:
+    docker:
+      - image: 'convisoappsec/flowcli'
+    working_directory: ~/workspace
+    environment:
+      NODE_OPTIONS: --max_old_space_size=4096
+
+references:
+  restore_dependencies_cache: &restore_dependencies_cache
+    restore_cache:
+      keys:
+        - dependencies-{{ checksum "package_cache.json" }}
+
+  restore_source_cache: &restore_source_cache
+    restore_cache:
+      keys:
+        - source-{{ .Branch }}-{{ .Revision }}
+
+  generate_dependencies_cache_checksum: &generate_dependencies_cache_checksum
+    run:
+      name: Dependencies cache checksum
+      shell: /bin/bash -eu
+      command: |
+        cat package.json > package_cache.json
+        cat yarn.lock >> package_cache.json
+
+commands:
+  restore-source-checksum-cache:
+    description: "This command will restore the source code from cache"
+    steps:
+      - *restore_source_cache
+      - run: git checkout -- .
+      - *generate_dependencies_cache_checksum
+      - *restore_dependencies_cache
+
+jobs:
+  bootstrap:
+    executor: node-minor
+    steps:
+      - checkout
+      - run: git gc
+      - save_cache:
+          key: source-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - '.git'
+      - run: git checkout -- .
+      - *generate_dependencies_cache_checksum
+      - *restore_dependencies_cache
+      - run:
+          name: Starting environment
+          command: npm ci
+      - save_cache:
+          key: dependencies-{{ checksum "package_cache.json" }}
+          paths:
+            - 'node_modules'
+  
+  code-lint:
+    executor: node-minor
+    steps:
+      - restore-source-checksum-cache
+      - run:
+          name: Build web
+          command: yarn lint
+  
+  unit-test:
+    executor: node
+    description: "This command will run the unit tests"
+    steps:
+      - restore-source-checksum-cache
+      - run:
+          name: Run tests
+          command: |
+            yarn test
+      - save_cache:
+          key: unit-test-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - jest/coverage
+  
+  app-bump-version:
+    executor: quick-tasks
+    steps:
+      - restore-source-checksum-cache
+      - run:
+          name: Bump version
+          command: echo ${CIRCLE_BUILD_NUM}
+            yarn version:app --set-build ${CIRCLE_BUILD_NUM}
+      - save_cache:
+          key: app-bump-version-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - android/app/build.gradle
+            - ios/react_circleci/Info.plist
+            - ios/react_circleciTests/Info.plist
+            - package.json
+
+  android-build:
+    executor: android
+    steps:
+      - restore-source-checksum-cache
+      - restore_cache:
+          keys:
+            - app-bump-version-{{ .Branch }}-{{ .Revision }}
+      - restore_cache:
+          keys:
+            - android-bundle-{{ checksum "Gemfile" }}
+      - restore_cache:
+          keys:
+            - android-gradle-{{ checksum "android/build.gradle" }}
+      - run:
+          name: Dependencies (Fastlane)
+          command: |
+            cd android
+            sudo gem install bundler
+            bundle config set path 'vendor/bundle'
+            bundle install
+      - run:
+          name: Geração do arquivo bundle
+          command: |
+            cd android
+            npx react-native bundle --platform android --dev false --entry-file index.js \
+            --bundle-output index.android.bundle
+      - run:
+          name: Build APK Release
+          command: |
+            export LC_ALL=en_US.UTF-8
+            export LANG=en_US.UTF-8
+            cd android
+            gradle assembleRelease
+      - save_cache:
+          key: android-bundle-{{ checksum "Gemfile" }}
+          paths:
+            - android/.bundle
+            - android/vendor
+      - save_cache:
+          key: android-gradle-{{ checksum "android/build.gradle" }}
+          paths:
+            - ~/.gradle
+      - save_cache:
+          key: app-bundle-version-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - android/app/build/outputs/bundle
+      - store_artifacts:
+          path: android/app/build/outputs/bundle
+      - store_artifacts:
+          path: android/app/build/outputs/apk/release/app-release.apk
+
+commit-workflow-filters: &commit-workflow-filters
+  branches:
+    only:
+      - develop
+      - /feature\/.*/
+      - /bugfix(-(sta|dev|mas))?\/.*/
+      - /hotfix(-(sta|dev|mas))?\/.*/
+
+deploy-dev-workflow-filters: &deploy-dev-workflow-filters
+  branches:
+    only:
+      - develop
+
+workflows:
+  version: 2
+  build_test:
+    jobs:
+      - bootstrap:
+          filters: *commit-workflow-filters
+      - code-lint:
+          requires:
+            - bootstrap
+          filters: *commit-workflow-filters
+      - unit-test:
+          name: unit-test-circleci
+          requires:
+            - bootstrap
+          filters: *commit-workflow-filters
+      - app-bump-version:
+          requires:
+            - unit-test-circleci
+          filters: *deploy-dev-workflow-filters
+      - android-build:
+          requires:
+            - app-bump-version
+          filters: *deploy-dev-workflow-filters
